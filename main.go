@@ -19,7 +19,9 @@ var cli struct {
 }
 
 func main() {
-	ctx := kong.Parse(&cli)
+	ctx := kong.Parse(&cli,
+		kong.UsageOnError(),
+	)
 
 	cfg, err := config.New()
 	ctx.FatalIfErrorf(err)
@@ -35,5 +37,5 @@ func (cmd *runserverCmd) Run(ctx *context) error {
 	if err != nil {
 		return err
 	}
-	return s.ListenAndServe("127.0.0.1:8080")
+	return s.ListenAndServe(ctx.cfg.RootURL.URL.Host)
 }

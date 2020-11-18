@@ -6,9 +6,14 @@
 # Files
 /.env
 /docker-compose.override.yml
+/go-saml-demo
 /TODO
 .DS_Store
 coverage.txt
 
 # Patterns
 .*.sw[op]
+*.cert
+*.crt
+*.key
+*.pem

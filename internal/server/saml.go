@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 
 	"github.com/crewjam/saml"
 	"github.com/crewjam/saml/samlsp"
@@ -28,11 +27,6 @@ func newSAMLMiddleware(cfg *config.Config) (*samlsp.Middleware, error) {
 		return nil, err
 	}
 
-	rootURL, err := url.Parse(cfg.SAML.RootURL)
-	if err != nil {
-		return nil, err
-	}
-
 	metadata, err := loadIDPMetadata(cfg)
 	if err != nil {
 		return nil, err
@@ -40,7 +34,7 @@ func newSAMLMiddleware(cfg *config.Config) (*samlsp.Middleware, error) {
 
 	return samlsp.New(samlsp.Options{
 		EntityID:    cfg.SAML.EntityID,
-		URL:         *rootURL,
+		URL:         cfg.RootURL.URL,
 		Key:         keyPair.PrivateKey.(*rsa.PrivateKey),
 		Certificate: keyPair.Leaf,
 		// TODO Intermediates
