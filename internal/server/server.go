@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/crewjam/saml/samlsp"
 	"github.com/go-chi/chi"
 
 	"github.com/sjansen/go-saml-demo/internal/config"
@@ -14,6 +15,7 @@ import (
 type Server struct {
 	router *chi.Mux
 	sm     *scs.SessionManager
+	sp     *samlsp.Middleware
 }
 
 // New creates a new Server
@@ -22,11 +24,13 @@ func New(cfg *config.Config) (*Server, error) {
 		sm: newSessionManager(),
 	}
 
-	err := s.addRouter(cfg)
+	sp, err := newSAMLMiddleware(cfg)
 	if err != nil {
 		return nil, err
 	}
+	s.sp = sp
 
+	s.addRouter()
 	return s, nil
 }
 
