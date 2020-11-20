@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"net/url"
 
 	"github.com/vrischmann/envconfig"
@@ -16,6 +17,7 @@ type Config struct {
 		Certificate string `envconfig:"GSD_SAML_CERTIFICATE"`
 		PrivateKey  string `envconfig:"GSD_SAML_PRIVATE_KEY"`
 	}
+	SessionStore SessionStore `envconfig:"GSD_SESSION_STORE,default=default"`
 }
 
 // New loads application settings from the environment.
@@ -25,6 +27,33 @@ func New() (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// SessionStore is an enum of possible session stores
+type SessionStore int
+
+const (
+	// DefaultStore is cookie-based with only SAML attributes
+	DefaultStore SessionStore = iota
+	// BoltStore is backed by a local file
+	BoltStore
+	// DynamoStore is backed by DynamoDB
+	DynamoStore
+)
+
+// Unmarshal converts an environment variable string to a URL
+func (store *SessionStore) Unmarshal(s string) error {
+	switch s {
+	case "default":
+		*store = DefaultStore
+	case "bolt":
+		*store = BoltStore
+	case "dynamodb":
+		*store = DynamoStore
+	default:
+		return fmt.Errorf("invalid session store: %q", s)
+	}
+	return nil
 }
 
 // URL represents a parsed URL
