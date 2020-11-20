@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"net/url"
 
 	"github.com/vrischmann/envconfig"
@@ -29,31 +28,22 @@ func New() (*Config, error) {
 	return cfg, nil
 }
 
-// SessionStore is an enum of possible session stores
-type SessionStore int
-
-const (
-	// DefaultStore is cookie-based with only SAML attributes
-	DefaultStore SessionStore = iota
-	// BoltStore is backed by a local file
-	BoltStore
-	// DynamoStore is backed by DynamoDB
-	DynamoStore
-)
-
-// Unmarshal converts an environment variable string to a URL
-func (store *SessionStore) Unmarshal(s string) error {
-	switch s {
-	case "default":
-		*store = DefaultStore
-	case "bolt":
-		*store = BoltStore
-	case "dynamodb":
-		*store = DynamoStore
-	default:
-		return fmt.Errorf("invalid session store: %q", s)
+// NewBoltStoreConfig loads BoltStore settings from the environment.
+func NewBoltStoreConfig() (*BoltStoreConfig, error) {
+	cfg := &BoltStoreConfig{}
+	if err := envconfig.Init(&cfg); err != nil {
+		return nil, err
 	}
-	return nil
+	return cfg, nil
+}
+
+// NewDynamoStoreConfig loads DynamoStore settings from the environment.
+func NewDynamoStoreConfig() (*DynamoStoreConfig, error) {
+	cfg := &DynamoStoreConfig{}
+	if err := envconfig.Init(&cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }
 
 // URL represents a parsed URL

@@ -13,6 +13,7 @@ import (
 
 // Server provides Strongbox's API
 type Server struct {
+	config *config.Config
 	router *chi.Mux
 	sm     *scs.SessionManager
 	sp     *samlsp.Middleware
@@ -21,7 +22,23 @@ type Server struct {
 // New creates a new Server
 func New(cfg *config.Config) (*Server, error) {
 	s := &Server{
-		sm: newSessionManager(),
+		config: cfg,
+		sm:     newSessionManager(),
+	}
+
+	switch cfg.SessionStore {
+	case config.DefaultStore:
+		// noop
+	case config.BoltStore:
+		if _, err := config.NewBoltStoreConfig(); err != nil {
+			return nil, err
+		}
+	case config.DynamoStore:
+		if _, err := config.NewDynamoStoreConfig(); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("not implemented: %s", cfg.SessionStore)
 	}
 
 	sp, err := newSAMLMiddleware(cfg)
@@ -36,6 +53,7 @@ func New(cfg *config.Config) (*Server, error) {
 
 // ListenAndServe starts the server
 func (s *Server) ListenAndServe(addr string) error {
+	fmt.Println("Using session store:", s.config.SessionStore)
 	fmt.Println("Listening to", addr)
 	return http.ListenAndServe(addr, s.router)
 }
