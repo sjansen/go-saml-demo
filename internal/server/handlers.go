@@ -3,12 +3,28 @@ package server
 import (
 	"html/template"
 	"net/http"
+
+	"github.com/crewjam/saml/samlsp"
 )
 
 var tmpl *template.Template
 
 func init() {
 	tmpl = template.Must(template.New("").ParseGlob("templates/*.html"))
+}
+
+// Profile is a protected page
+func Profile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	var attrs samlsp.Attributes
+	s := samlsp.SessionFromContext(r.Context())
+	if sa, ok := s.(samlsp.SessionWithAttributes); ok {
+		attrs = sa.GetAttributes()
+	}
+	if err := tmpl.ExecuteTemplate(w, "profile.html", attrs); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // Root is the root app page

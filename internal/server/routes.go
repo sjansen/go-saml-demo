@@ -24,5 +24,6 @@ func (s *Server) addRouter() {
 
 	r.Get("/", Root)
 	r.Mount("/saml/", s.sp)
+	r.Handle("/profile", s.sp.RequireAccount(http.HandlerFunc(Profile)))
 	r.Handle("/secret", s.sp.RequireAccount(http.HandlerFunc(Secret)))
 }

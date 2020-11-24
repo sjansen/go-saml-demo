@@ -1,0 +1,14 @@
+<html>
+  <head>
+    <title>go-saml-demo</title>
+  </head>
+  <body>
+    <h1><a href="/">go-saml-demo</a></h1>
+    <h2>Profile</h2>
+    {{range $key, $values := . }}<dl>
+      <dt>{{ $key }}</dt>
+      {{range $value := $values }}<dd>{{ $value }}</dd>
+      {{end}}
+    </dl>{{end}}
+  </body>
+</html>
