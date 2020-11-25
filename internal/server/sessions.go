@@ -10,7 +10,7 @@ import (
 const sessionCookieName = "sessionid"
 const sessionLifetime = 7 * 24 * time.Hour
 
-func newSessionManager() *scs.SessionManager {
+func (s *Server) addSCS() {
 	sm := scs.New()
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.Name = sessionCookieName
@@ -19,5 +19,6 @@ func newSessionManager() *scs.SessionManager {
 	sm.Cookie.Secure = false // TODO
 	sm.IdleTimeout = time.Hour
 	sm.Lifetime = sessionLifetime
-	return sm
+	s.sm = sm
+	s.useSCS = true
 }

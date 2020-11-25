@@ -13,6 +13,8 @@ import (
 
 // Server provides Strongbox's API
 type Server struct {
+	useSCS bool
+
 	config *config.Config
 	router *chi.Mux
 	sm     *scs.SessionManager
@@ -23,7 +25,6 @@ type Server struct {
 func New(cfg *config.Config) (*Server, error) {
 	s := &Server{
 		config: cfg,
-		sm:     newSessionManager(),
 	}
 
 	switch cfg.SessionStore {
@@ -33,10 +34,12 @@ func New(cfg *config.Config) (*Server, error) {
 		if _, err := config.NewBoltStoreConfig(); err != nil {
 			return nil, err
 		}
+		s.addSCS()
 	case config.DynamoStore:
 		if _, err := config.NewDynamoStoreConfig(); err != nil {
 			return nil, err
 		}
+		s.addSCS()
 	default:
 		return nil, fmt.Errorf("not implemented: %s", cfg.SessionStore)
 	}
