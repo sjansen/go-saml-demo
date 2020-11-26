@@ -96,6 +96,7 @@ func (s *Server) GetSession(r *http.Request) (samlsp.Session, error) {
 var ErrNoTrackedRequest = errors.New("saml: tracked request not present")
 
 const trackedRequestsKey = "TrackedRequests"
+const trackedRequestsLimit = 10
 
 // GetTrackedRequest returns a pending tracked request.
 func (s *Server) GetTrackedRequest(r *http.Request, index string) (*samlsp.TrackedRequest, error) {
@@ -162,18 +163,15 @@ func (s *Server) TrackRequest(w http.ResponseWriter, r *http.Request, samlReques
 	ctx := r.Context()
 	requests, ok := s.tracked.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
 	switch {
-	case ok && len(requests) < 5:
+	case ok && len(requests) < trackedRequestsLimit:
 		requests = append(requests, request)
 	case ok:
-		requests = []samlsp.TrackedRequest{
-			requests[1], requests[2], requests[3], requests[4], request,
-		}
+		copy(requests, requests[1:])
+		requests[len(requests)-1] = request
 	default:
 		requests = []samlsp.TrackedRequest{request}
 	}
 	s.tracked.Put(ctx, trackedRequestsKey, requests)
-
-	requests, ok = s.tracked.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
 
 	return index, nil
 }
