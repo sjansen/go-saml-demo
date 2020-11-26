@@ -1,24 +1,179 @@
 package server
 
 import (
+	"crypto/rand"
+	"encoding/ascii85"
+	"encoding/gob"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/crewjam/saml"
+	"github.com/crewjam/saml/samlsp"
 )
 
 const sessionCookieName = "sessionid"
 const sessionLifetime = 7 * 24 * time.Hour
+const trackerCookieName = "relaystate"
+const trackerLifetime = time.Hour
 
 func (s *Server) addSCS() {
+	domain := s.config.RootURL.URL.Hostname()
+	s.useSCS = true
+
 	sm := scs.New()
+	sm.Cookie.Domain = domain
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.Name = sessionCookieName
 	sm.Cookie.Persist = true
-	sm.Cookie.SameSite = http.SameSiteStrictMode
-	sm.Cookie.Secure = false // TODO
+	if domain == "localhost" {
+		sm.Cookie.Secure = false
+	} else {
+		sm.Cookie.SameSite = http.SameSiteStrictMode
+		sm.Cookie.Secure = true
+	}
 	sm.IdleTimeout = time.Hour
 	sm.Lifetime = sessionLifetime
-	s.sm = sm
-	s.useSCS = true
+	s.session = sm
+	s.saml.Session = s
+
+	sm = scs.New()
+	sm.Cookie.Domain = domain
+	sm.Cookie.HttpOnly = true
+	sm.Cookie.Name = trackerCookieName
+	sm.Cookie.Persist = false
+	sm.Cookie.SameSite = http.SameSiteNoneMode
+	if domain == "localhost" {
+		sm.Cookie.Secure = false
+	} else {
+		sm.Cookie.Secure = true
+	}
+	sm.IdleTimeout = trackerLifetime
+	sm.Lifetime = trackerLifetime
+	s.tracked = sm
+	s.saml.RequestTracker = s
+	gob.Register([]samlsp.TrackedRequest{})
+}
+
+// CreateSession is called when we have received a valid SAML assertion and
+// should create a new session and modify the http response accordingly, e.g. by
+// setting a cookie.
+func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion) error {
+	// TODO
+	// - convert assertion to User
+	// - add User to session
+	ctx := r.Context()
+	err := s.session.RenewToken(ctx)
+	if err == nil {
+		s.session.Put(ctx, "authenticated", true)
+		s.tracked.Destroy(ctx)
+	}
+	return err
+}
+
+// DeleteSession is called to modify the response such that it removed the current
+// session, e.g. by deleting a cookie.
+func (s *Server) DeleteSession(w http.ResponseWriter, r *http.Request) error {
+	return s.session.Destroy(r.Context())
+}
+
+// GetSession returns the current samlsp.Session associated with the request, or
+// ErrNoSession if there is no valid session.
+func (s *Server) GetSession(r *http.Request) (samlsp.Session, error) {
+	// TODO
+	// - return User if authenticated
+	// - return ErrNoSession if unauthenticated
+	ctx := r.Context()
+	authenticated := s.session.GetBool(ctx, "authenticated")
+	if authenticated {
+		return &struct{}{}, nil
+	}
+	return nil, samlsp.ErrNoSession
+}
+
+// ErrNoTrackedRequest is returned for invalid and expired relay states
+var ErrNoTrackedRequest = errors.New("saml: tracked request not present")
+
+const trackedRequestsKey = "TrackedRequests"
+
+// GetTrackedRequest returns a pending tracked request.
+func (s *Server) GetTrackedRequest(r *http.Request, index string) (*samlsp.TrackedRequest, error) {
+	requests, ok := s.tracked.Get(r.Context(), trackedRequestsKey).([]samlsp.TrackedRequest)
+	if !ok {
+		return nil, ErrNoTrackedRequest
+	}
+	for _, r := range requests {
+		if r.Index == index {
+			return &r, nil
+		}
+	}
+	return nil, ErrNoTrackedRequest
+}
+
+// GetTrackedRequests returns all the pending tracked requests
+func (s *Server) GetTrackedRequests(r *http.Request) []samlsp.TrackedRequest {
+	requests, ok := s.tracked.Get(r.Context(), trackedRequestsKey).([]samlsp.TrackedRequest)
+	if ok {
+		return requests
+	}
+	return []samlsp.TrackedRequest{}
+}
+
+// StopTrackingRequest stops tracking the SAML request given by index, which is a string
+// previously returned from TrackRequest
+func (s *Server) StopTrackingRequest(w http.ResponseWriter, r *http.Request, index string) error {
+	ctx := r.Context()
+	requests, ok := s.tracked.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
+	if ok {
+		for i := len(requests) - 1; i >= 0; i-- {
+			if requests[i].Index == index {
+				copy(requests[i:], requests[i+1:])
+				requests = requests[:len(requests)-1]
+			}
+		}
+		if len(requests) > 0 {
+			s.tracked.Put(ctx, trackedRequestsKey, requests)
+		} else {
+			s.tracked.Remove(ctx, trackedRequestsKey)
+		}
+	}
+	return nil
+}
+
+// TrackRequest starts tracking the SAML request with the given ID. It returns an
+// `index` that should be used as the RelayState in the SAMl request flow.
+func (s *Server) TrackRequest(w http.ResponseWriter, r *http.Request, samlRequestID string) (string, error) {
+	src := make([]byte, 29)
+	if _, err := rand.Read(src); err != nil {
+		return "", err
+	}
+
+	dst := make([]byte, ascii85.MaxEncodedLen(len(src)))
+	ascii85.Encode(dst, src)
+
+	index := string(dst)
+	request := samlsp.TrackedRequest{
+		Index:         index,
+		SAMLRequestID: samlRequestID,
+		URI:           r.URL.String(),
+	}
+
+	ctx := r.Context()
+	requests, ok := s.tracked.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
+	switch {
+	case ok && len(requests) < 5:
+		requests = append(requests, request)
+	case ok:
+		requests = []samlsp.TrackedRequest{
+			requests[1], requests[2], requests[3], requests[4], request,
+		}
+	default:
+		requests = []samlsp.TrackedRequest{request}
+	}
+	s.tracked.Put(ctx, trackedRequestsKey, requests)
+
+	requests, ok = s.tracked.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
+
+	return index, nil
 }

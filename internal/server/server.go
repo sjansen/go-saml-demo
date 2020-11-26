@@ -15,10 +15,11 @@ import (
 type Server struct {
 	useSCS bool
 
-	config *config.Config
-	router *chi.Mux
-	sm     *scs.SessionManager
-	sp     *samlsp.Middleware
+	config  *config.Config
+	router  *chi.Mux
+	saml    *samlsp.Middleware
+	session *scs.SessionManager
+	tracked *scs.SessionManager
 }
 
 // New creates a new Server
@@ -26,6 +27,12 @@ func New(cfg *config.Config) (*Server, error) {
 	s := &Server{
 		config: cfg,
 	}
+
+	sp, err := newSAMLMiddleware(cfg)
+	if err != nil {
+		return nil, err
+	}
+	s.saml = sp
 
 	switch cfg.SessionStore {
 	case config.DefaultStore:
@@ -43,12 +50,6 @@ func New(cfg *config.Config) (*Server, error) {
 	default:
 		return nil, fmt.Errorf("not implemented: %s", cfg.SessionStore)
 	}
-
-	sp, err := newSAMLMiddleware(cfg)
-	if err != nil {
-		return nil, err
-	}
-	s.sp = sp
 
 	s.addRouter()
 	return s, nil

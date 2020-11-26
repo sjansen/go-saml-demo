@@ -20,15 +20,15 @@ func (s *Server) addRouter() {
 		cmw.Timeout(5*time.Second),
 		cmw.Heartbeat("/ping"),
 	)
-
 	if s.useSCS {
-		r.Use(s.sm.LoadAndSave)
+		r.Use(s.session.LoadAndSave)
+		r.Use(s.tracked.LoadAndSave)
 	}
 
 	r.Get("/", Root)
-	r.Mount("/saml/", s.sp)
-	r.Handle("/secret", s.sp.RequireAccount(http.HandlerFunc(Secret)))
+	r.Mount("/saml/", s.saml)
+	r.Handle("/secret", s.saml.RequireAccount(http.HandlerFunc(Secret)))
 	if !s.useSCS {
-		r.Handle("/profile", s.sp.RequireAccount(http.HandlerFunc(ProfileFromSAML)))
+		r.Handle("/profile", s.saml.RequireAccount(http.HandlerFunc(ProfileFromSAML)))
 	}
 }
