@@ -28,7 +28,5 @@ func (s *Server) addRouter() {
 	r.Get("/", Root)
 	r.Mount("/saml/", s.saml)
 	r.Handle("/secret", s.saml.RequireAccount(http.HandlerFunc(Secret)))
-	if !s.useSCS {
-		r.Handle("/profile", s.saml.RequireAccount(http.HandlerFunc(ProfileFromSAML)))
-	}
+	r.Handle("/profile", s.saml.RequireAccount(http.HandlerFunc(Profile)))
 }

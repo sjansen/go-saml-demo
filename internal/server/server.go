@@ -11,6 +11,9 @@ import (
 	"github.com/sjansen/go-saml-demo/internal/config"
 )
 
+var _ samlsp.RequestTracker = &Server{}
+var _ samlsp.Session = &Server{}
+
 // Server provides Strongbox's API
 type Server struct {
 	useSCS bool

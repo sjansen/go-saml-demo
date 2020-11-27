@@ -60,16 +60,37 @@ func (s *Server) addSCS() {
 // should create a new session and modify the http response accordingly, e.g. by
 // setting a cookie.
 func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion) error {
-	// TODO
-	// - convert assertion to User
-	// - add User to session
 	ctx := r.Context()
 	err := s.session.RenewToken(ctx)
-	if err == nil {
-		s.session.Put(ctx, "authenticated", true)
-		s.tracked.Destroy(ctx)
+	if err != nil {
+		return err
 	}
-	return err
+
+	u := User{}
+	for _, attributeStatement := range assertion.AttributeStatements {
+		for _, attr := range attributeStatement.Attributes {
+			claimName := attr.FriendlyName
+			if claimName == "" {
+				claimName = attr.Name
+			}
+			for _, value := range attr.Values {
+				switch claimName {
+				case "email":
+					u.Email = value.Value
+				case "firstName":
+					u.GivenName = value.Value
+				case "lastName":
+					u.Surname = value.Value
+				case "roles":
+					u.Roles = append(u.Roles, value.Value)
+				}
+			}
+		}
+	}
+	s.session.Put(ctx, "User", u)
+	s.tracked.Destroy(ctx)
+
+	return nil
 }
 
 // DeleteSession is called to modify the response such that it removed the current
@@ -81,13 +102,9 @@ func (s *Server) DeleteSession(w http.ResponseWriter, r *http.Request) error {
 // GetSession returns the current samlsp.Session associated with the request, or
 // ErrNoSession if there is no valid session.
 func (s *Server) GetSession(r *http.Request) (samlsp.Session, error) {
-	// TODO
-	// - return User if authenticated
-	// - return ErrNoSession if unauthenticated
 	ctx := r.Context()
-	authenticated := s.session.GetBool(ctx, "authenticated")
-	if authenticated {
-		return &struct{}{}, nil
+	if u, ok := s.session.Get(ctx, "User").(User); ok {
+		return &u, nil
 	}
 	return nil, samlsp.ErrNoSession
 }

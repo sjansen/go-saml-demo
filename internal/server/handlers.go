@@ -13,8 +13,8 @@ func init() {
 	tmpl = template.Must(template.New("").ParseGlob("templates/*.html"))
 }
 
-// ProfileFromSAML shows user attributes when SCS isn't enabled.
-func ProfileFromSAML(w http.ResponseWriter, r *http.Request) {
+// Profile shows user attributes when SCS isn't enabled.
+func Profile(w http.ResponseWriter, r *http.Request) {
 	var attrs samlsp.Attributes
 	s := samlsp.SessionFromContext(r.Context())
 	if sa, ok := s.(samlsp.SessionWithAttributes); ok {
