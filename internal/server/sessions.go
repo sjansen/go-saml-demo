@@ -18,27 +18,12 @@ const sessionLifetime = 7 * 24 * time.Hour
 const trackerCookieName = "relaystate"
 const trackerLifetime = time.Hour
 
-func (s *Server) addSCS() {
+func (s *Server) addSCS(relaystate, sessions scs.Store) {
 	domain := s.config.RootURL.URL.Hostname()
 	s.useSCS = true
 
+	// relaystate
 	sm := scs.New()
-	sm.Cookie.Domain = domain
-	sm.Cookie.HttpOnly = true
-	sm.Cookie.Name = sessionCookieName
-	sm.Cookie.Persist = true
-	if domain == "localhost" {
-		sm.Cookie.Secure = false
-	} else {
-		sm.Cookie.SameSite = http.SameSiteStrictMode
-		sm.Cookie.Secure = true
-	}
-	sm.IdleTimeout = time.Hour
-	sm.Lifetime = sessionLifetime
-	s.session = sm
-	s.saml.Session = s
-
-	sm = scs.New()
 	sm.Cookie.Domain = domain
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.Name = trackerCookieName
@@ -51,9 +36,32 @@ func (s *Server) addSCS() {
 	}
 	sm.IdleTimeout = trackerLifetime
 	sm.Lifetime = trackerLifetime
-	s.tracked = sm
+	if relaystate != nil {
+		sm.Store = relaystate
+	}
+	s.relaystate = sm
 	s.saml.RequestTracker = s
 	gob.Register([]samlsp.TrackedRequest{})
+
+	// sessions
+	sm = scs.New()
+	sm.Cookie.Domain = domain
+	sm.Cookie.HttpOnly = true
+	sm.Cookie.Name = sessionCookieName
+	sm.Cookie.Persist = true
+	if domain == "localhost" {
+		sm.Cookie.Secure = false
+	} else {
+		sm.Cookie.SameSite = http.SameSiteStrictMode
+		sm.Cookie.Secure = true
+	}
+	sm.IdleTimeout = time.Hour
+	sm.Lifetime = sessionLifetime
+	if sessions != nil {
+		sm.Store = sessions
+	}
+	s.sessions = sm
+	s.saml.Session = s
 }
 
 // CreateSession is called when we have received a valid SAML assertion and
@@ -61,7 +69,7 @@ func (s *Server) addSCS() {
 // setting a cookie.
 func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, assertion *saml.Assertion) error {
 	ctx := r.Context()
-	err := s.session.RenewToken(ctx)
+	err := s.sessions.RenewToken(ctx)
 	if err != nil {
 		return err
 	}
@@ -87,8 +95,8 @@ func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, assertion
 			}
 		}
 	}
-	s.session.Put(ctx, "User", u)
-	s.tracked.Destroy(ctx)
+	s.sessions.Put(ctx, "User", u)
+	s.relaystate.Destroy(ctx)
 
 	return nil
 }
@@ -96,14 +104,14 @@ func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, assertion
 // DeleteSession is called to modify the response such that it removed the current
 // session, e.g. by deleting a cookie.
 func (s *Server) DeleteSession(w http.ResponseWriter, r *http.Request) error {
-	return s.session.Destroy(r.Context())
+	return s.sessions.Destroy(r.Context())
 }
 
 // GetSession returns the current samlsp.Session associated with the request, or
 // ErrNoSession if there is no valid session.
 func (s *Server) GetSession(r *http.Request) (samlsp.Session, error) {
 	ctx := r.Context()
-	if u, ok := s.session.Get(ctx, "User").(User); ok {
+	if u, ok := s.sessions.Get(ctx, "User").(User); ok {
 		return &u, nil
 	}
 	return nil, samlsp.ErrNoSession
@@ -117,7 +125,7 @@ const trackedRequestsLimit = 10
 
 // GetTrackedRequest returns a pending tracked request.
 func (s *Server) GetTrackedRequest(r *http.Request, index string) (*samlsp.TrackedRequest, error) {
-	requests, ok := s.tracked.Get(r.Context(), trackedRequestsKey).([]samlsp.TrackedRequest)
+	requests, ok := s.relaystate.Get(r.Context(), trackedRequestsKey).([]samlsp.TrackedRequest)
 	if !ok {
 		return nil, ErrNoTrackedRequest
 	}
@@ -131,7 +139,7 @@ func (s *Server) GetTrackedRequest(r *http.Request, index string) (*samlsp.Track
 
 // GetTrackedRequests returns all the pending tracked requests
 func (s *Server) GetTrackedRequests(r *http.Request) []samlsp.TrackedRequest {
-	requests, ok := s.tracked.Get(r.Context(), trackedRequestsKey).([]samlsp.TrackedRequest)
+	requests, ok := s.relaystate.Get(r.Context(), trackedRequestsKey).([]samlsp.TrackedRequest)
 	if ok {
 		return requests
 	}
@@ -142,7 +150,7 @@ func (s *Server) GetTrackedRequests(r *http.Request) []samlsp.TrackedRequest {
 // previously returned from TrackRequest
 func (s *Server) StopTrackingRequest(w http.ResponseWriter, r *http.Request, index string) error {
 	ctx := r.Context()
-	requests, ok := s.tracked.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
+	requests, ok := s.relaystate.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
 	if ok {
 		for i := len(requests) - 1; i >= 0; i-- {
 			if requests[i].Index == index {
@@ -151,9 +159,9 @@ func (s *Server) StopTrackingRequest(w http.ResponseWriter, r *http.Request, ind
 			}
 		}
 		if len(requests) > 0 {
-			s.tracked.Put(ctx, trackedRequestsKey, requests)
+			s.relaystate.Put(ctx, trackedRequestsKey, requests)
 		} else {
-			s.tracked.Remove(ctx, trackedRequestsKey)
+			s.relaystate.Remove(ctx, trackedRequestsKey)
 		}
 	}
 	return nil
@@ -178,7 +186,7 @@ func (s *Server) TrackRequest(w http.ResponseWriter, r *http.Request, samlReques
 	}
 
 	ctx := r.Context()
-	requests, ok := s.tracked.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
+	requests, ok := s.relaystate.Get(ctx, trackedRequestsKey).([]samlsp.TrackedRequest)
 	switch {
 	case ok && len(requests) < trackedRequestsLimit:
 		requests = append(requests, request)
@@ -188,7 +196,7 @@ func (s *Server) TrackRequest(w http.ResponseWriter, r *http.Request, samlReques
 	default:
 		requests = []samlsp.TrackedRequest{request}
 	}
-	s.tracked.Put(ctx, trackedRequestsKey, requests)
+	s.relaystate.Put(ctx, trackedRequestsKey, requests)
 
 	return index, nil
 }

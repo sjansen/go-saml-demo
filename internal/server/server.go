@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/crewjam/saml/samlsp"
@@ -16,19 +17,23 @@ var _ samlsp.Session = &Server{}
 
 // Server provides Strongbox's API
 type Server struct {
+	config     *config.Config
+	relaystate *scs.SessionManager
+	router     *chi.Mux
+	saml       *samlsp.Middleware
+	sessions   *scs.SessionManager
+
 	useSCS bool
 
-	config  *config.Config
-	router  *chi.Mux
-	saml    *samlsp.Middleware
-	session *scs.SessionManager
-	tracked *scs.SessionManager
+	done chan struct{}
+	wg   sync.WaitGroup
 }
 
 // New creates a new Server
 func New(cfg *config.Config) (*Server, error) {
 	s := &Server{
 		config: cfg,
+		done:   make(chan struct{}),
 	}
 
 	sp, err := newSAMLMiddleware(cfg)
@@ -41,15 +46,20 @@ func New(cfg *config.Config) (*Server, error) {
 	case config.DefaultStore:
 		// noop
 	case config.BoltStore:
-		if _, err := config.NewBoltStoreConfig(); err != nil {
+		cfg, err := config.NewBoltStoreConfig()
+		if err != nil {
 			return nil, err
 		}
-		s.addSCS()
+		relaystate, sessions, err := s.openBoltStores(cfg)
+		if err != nil {
+			return nil, err
+		}
+		s.addSCS(relaystate, sessions)
 	case config.DynamoStore:
 		if _, err := config.NewDynamoStoreConfig(); err != nil {
 			return nil, err
 		}
-		s.addSCS()
+		s.addSCS(nil, nil)
 	default:
 		return nil, fmt.Errorf("not implemented: %s", cfg.SessionStore)
 	}
@@ -60,6 +70,9 @@ func New(cfg *config.Config) (*Server, error) {
 
 // ListenAndServe starts the server
 func (s *Server) ListenAndServe(addr string) error {
+	defer s.wg.Wait()
+	defer close(s.done)
+
 	fmt.Println("Using session store:", s.config.SessionStore)
 	fmt.Println("Listening to", addr)
 	return http.ListenAndServe(addr, s.router)

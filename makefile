@@ -5,5 +5,5 @@ default:
 
 boltdb:
 	GSD_SESSION_STORE=boltdb \
-	GSD_SESSION_FILE=data/bolt.db \
+	GSD_SESSION_DIR=data/ \
 	go run main.go runserver

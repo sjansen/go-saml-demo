@@ -21,8 +21,8 @@ func (s *Server) addRouter() {
 		cmw.Heartbeat("/ping"),
 	)
 	if s.useSCS {
-		r.Use(s.session.LoadAndSave)
-		r.Use(s.tracked.LoadAndSave)
+		r.Use(s.sessions.LoadAndSave)
+		r.Use(s.relaystate.LoadAndSave)
 	}
 
 	r.Get("/", Root)

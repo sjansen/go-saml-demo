@@ -1,16 +1,8 @@
 package config
 
-import "fmt"
-
-// BoltStoreConfig contains settings required for BoltStore
-type BoltStoreConfig struct {
-	Path string `envconfig:"GSD_SESSION_FILE"`
-}
-
-// DynamoStoreConfig contains settings required for DynamoStore
-type DynamoStoreConfig struct {
-	TableName string `envconfig:"GSD_SESSION_TABLE"`
-}
+import (
+	"fmt"
+)
 
 // SessionStore is an enum of possible session stores
 type SessionStore int

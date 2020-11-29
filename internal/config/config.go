@@ -1,8 +1,6 @@
 package config
 
 import (
-	"net/url"
-
 	"github.com/vrischmann/envconfig"
 )
 
@@ -17,6 +15,16 @@ type Config struct {
 		PrivateKey  string `envconfig:"GSD_SAML_PRIVATE_KEY"`
 	}
 	SessionStore SessionStore `envconfig:"GSD_SESSION_STORE,default=default"`
+}
+
+// BoltStoreConfig contains settings required for BoltStore
+type BoltStoreConfig struct {
+	Path string `envconfig:"GSD_SESSION_DIR"`
+}
+
+// DynamoStoreConfig contains settings required for DynamoStore
+type DynamoStoreConfig struct {
+	TableName string `envconfig:"GSD_SESSION_TABLE"`
 }
 
 // New loads application settings from the environment.
@@ -44,14 +52,4 @@ func NewDynamoStoreConfig() (*DynamoStoreConfig, error) {
 		return nil, err
 	}
 	return cfg, nil
-}
-
-// URL represents a parsed URL
-type URL struct {
-	url.URL
-}
-
-// Unmarshal converts an environment variable string to a URL
-func (u *URL) Unmarshal(s string) error {
-	return u.URL.UnmarshalBinary([]byte(s))
 }
