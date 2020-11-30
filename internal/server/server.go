@@ -1,9 +1,13 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/crewjam/saml/samlsp"
@@ -70,10 +74,23 @@ func New(cfg *config.Config) (*Server, error) {
 
 // ListenAndServe starts the server
 func (s *Server) ListenAndServe(addr string) error {
-	defer s.wg.Wait()
-	defer close(s.done)
-
 	fmt.Println("Using session store:", s.config.SessionStore)
 	fmt.Println("Listening to", addr)
-	return http.ListenAndServe(addr, s.router)
+
+	server := &http.Server{Addr: addr, Handler: s.router}
+	go func() {
+		ch := make(chan os.Signal)
+		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		<-ch
+		fmt.Println("Exiting...")
+		server.Shutdown(context.Background())
+	}()
+
+	err := server.ListenAndServe()
+	close(s.done)
+	s.wg.Wait()
+	if err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }
