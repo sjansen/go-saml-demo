@@ -34,7 +34,7 @@ func newSAMLMiddleware(cfg *config.Config) (*samlsp.Middleware, error) {
 
 	return samlsp.New(samlsp.Options{
 		EntityID:    cfg.SAML.EntityID,
-		URL:         cfg.RootURL.URL,
+		URL:         cfg.Root.URL,
 		Key:         keyPair.PrivateKey.(*rsa.PrivateKey),
 		Certificate: keyPair.Leaf,
 		// TODO Intermediates

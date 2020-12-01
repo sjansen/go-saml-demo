@@ -19,7 +19,7 @@ const trackerCookieName = "relaystate"
 const trackerLifetime = time.Hour
 
 func (s *Server) addSCS(relaystate, sessions scs.Store) {
-	domain := s.config.RootURL.URL.Hostname()
+	domain := s.config.Root.URL.Hostname()
 	s.useSCS = true
 
 	// relaystate
@@ -29,7 +29,7 @@ func (s *Server) addSCS(relaystate, sessions scs.Store) {
 	sm.Cookie.Name = trackerCookieName
 	sm.Cookie.Persist = false
 	sm.Cookie.SameSite = http.SameSiteNoneMode
-	if domain == "localhost" {
+	if domain == "localhost" || domain == "127.0.0.1" {
 		sm.Cookie.Secure = false
 	} else {
 		sm.Cookie.Secure = true
@@ -49,7 +49,7 @@ func (s *Server) addSCS(relaystate, sessions scs.Store) {
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.Name = sessionCookieName
 	sm.Cookie.Persist = true
-	if domain == "localhost" {
+	if domain == "localhost" || domain == "127.0.0.1" {
 		sm.Cookie.Secure = false
 	} else {
 		sm.Cookie.SameSite = http.SameSiteStrictMode
@@ -96,7 +96,7 @@ func (s *Server) CreateSession(w http.ResponseWriter, r *http.Request, assertion
 		}
 	}
 	s.sessions.Put(ctx, "User", u)
-	s.relaystate.Destroy(ctx)
+	_ = s.relaystate.Destroy(ctx)
 
 	return nil
 }

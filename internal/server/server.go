@@ -60,10 +60,15 @@ func New(cfg *config.Config) (*Server, error) {
 		}
 		s.addSCS(relaystate, sessions)
 	case config.DynamoStore:
-		if _, err := config.NewDynamoStoreConfig(); err != nil {
+		cfg, err := config.NewDynamoStoreConfig()
+		if err != nil {
 			return nil, err
 		}
-		s.addSCS(nil, nil)
+		relaystate, sessions, err := s.openDynamoStores(cfg)
+		if err != nil {
+			return nil, err
+		}
+		s.addSCS(relaystate, sessions)
 	default:
 		return nil, fmt.Errorf("not implemented: %s", cfg.SessionStore)
 	}
@@ -73,17 +78,20 @@ func New(cfg *config.Config) (*Server, error) {
 }
 
 // ListenAndServe starts the server
-func (s *Server) ListenAndServe(addr string) error {
+func (s *Server) ListenAndServe() error {
 	fmt.Println("Using session store:", s.config.SessionStore)
-	fmt.Println("Listening to", addr)
+	fmt.Println("Listening to", s.config.Root.String())
 
-	server := &http.Server{Addr: addr, Handler: s.router}
+	server := &http.Server{
+		Addr:    s.config.Addr,
+		Handler: s.router,
+	}
 	go func() {
-		ch := make(chan os.Signal)
+		ch := make(chan os.Signal, 10)
 		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 		<-ch
 		fmt.Println("Exiting...")
-		server.Shutdown(context.Background())
+		_ = server.Shutdown(context.Background())
 	}()
 
 	err := server.ListenAndServe()

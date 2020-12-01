@@ -1,0 +1,25 @@
+version: '2.1'
+services:
+  dynamodb:
+    command: "-jar DynamoDBLocal.jar -dbPath /data/dynamodb-local -sharedDb"
+    environment:
+      AWS_REGION: us-east-2
+    volumes:
+      - ./data/dynamodb-local:/data/dynamodb-local
+  go:
+    command: go run main.go runserver
+    depends_on:
+      - dynamodb
+    environment:
+      AWS_REGION: us-east-2
+      GSD_DYNAMOSTORE_AUTOCREATE: "true"
+      GSD_DYNAMOSTORE_ENDPOINT: "http://dynamodb:8000"
+      GSD_DYNAMOSTORE_TABLE: "go-saml-demo"
+      GSD_SESSION_STORE: "dynamodb"
+      GSD_LISTEN_ADDR: "0.0.0.0:8080"
+    ports:
+      - "8080:8080"
+    volumes:
+     - .:/go/src/github.com/sjansen/go-saml-demo
+     - "${GOPATH:-/tmp}/pkg/mod:/go/pkg/mod"
+    working_dir: /go/src/github.com/sjansen/go-saml-demo

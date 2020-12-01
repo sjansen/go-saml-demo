@@ -37,5 +37,5 @@ func (cmd *runserverCmd) Run(ctx *context) error {
 	if err != nil {
 		return err
 	}
-	return s.ListenAndServe(ctx.cfg.RootURL.URL.Host)
+	return s.ListenAndServe()
 }
