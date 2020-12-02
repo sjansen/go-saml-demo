@@ -16,11 +16,12 @@ import (
 )
 
 func (s *Server) openBoltStores(cfg *config.BoltStoreConfig) (scs.Store, scs.Store, error) {
-	db, err := bbolt.Open(cfg.Path+"relaystate.db", 0600, nil)
+	db, err := bbolt.Open(cfg.Path+"sessions.db", 0600, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	relaystate := boltstore.NewWithCleanupInterval(db, time.Minute)
+
+	store := boltstore.NewWithCleanupInterval(db, time.Minute)
 	go func(db *bbolt.DB) {
 		<-s.done
 		db.Close()
@@ -28,18 +29,8 @@ func (s *Server) openBoltStores(cfg *config.BoltStoreConfig) (scs.Store, scs.Sto
 	}(db)
 	s.wg.Add(1)
 
-	db, err = bbolt.Open(cfg.Path+"sessions.db", 0600, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	sessions := boltstore.NewWithCleanupInterval(db, time.Minute)
-	go func(db *bbolt.DB) {
-		<-s.done
-		db.Close()
-		s.wg.Done()
-	}(db)
-	s.wg.Add(1)
-
+	relaystate := NewPrefixStore("r:", store)
+	sessions := NewPrefixStore("s:", store)
 	return relaystate, sessions, nil
 }
 
@@ -58,14 +49,45 @@ func (s *Server) openDynamoStores(cfg *config.DynamoStoreConfig) (scs.Store, scs
 	}
 	svc := dynamodb.New(sess, awscfg)
 
-	relaystate := dynamostore.NewWithTableName(svc, cfg.Table)
-	sessions := dynamostore.NewWithTableName(svc, cfg.Table)
+	store := dynamostore.NewWithTableName(svc, cfg.Table)
 	if cfg.Create {
-		err := sessions.CreateTable()
+		err := store.CreateTable()
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
+	relaystate := NewPrefixStore("r:", store)
+	sessions := NewPrefixStore("s:", store)
 	return relaystate, sessions, nil
+}
+
+// PrefixStore enables multiple sessions to be stored in a single
+// session store by automatically pre-pending a prefix to tokens.
+type PrefixStore struct {
+	prefix string
+	store  scs.Store
+}
+
+// NewPrefixStore wraps a session store so it can be shared.
+func NewPrefixStore(prefix string, store scs.Store) *PrefixStore {
+	return &PrefixStore{
+		prefix: prefix,
+		store:  store,
+	}
+}
+
+// Delete removes the session token and data from the store.
+func (s *PrefixStore) Delete(token string) (err error) {
+	return s.store.Delete(s.prefix + token)
+}
+
+// Find returns the data for a session token from the store.
+func (s *PrefixStore) Find(token string) (b []byte, found bool, err error) {
+	return s.store.Find(s.prefix + token)
+}
+
+// Commit add the session token and data to the store.
+func (s *PrefixStore) Commit(token string, b []byte, expiry time.Time) (err error) {
+	return s.store.Commit(s.prefix+token, b, expiry)
 }
